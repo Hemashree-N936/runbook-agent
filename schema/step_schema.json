@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Runbook Step",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "description",
+    "tool",
+    "args",
+    "risk",
+    "preconditions",
+    "rollback",
+    "expected_outcome"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "tool": {
+      "type": "string"
+    },
+    "args": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "risk": {
+      "type": "string",
+      "enum": [
+        "read_only",
+        "reversible",
+        "destructive"
+      ]
+    },
+    "preconditions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "rollback": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "expected_outcome": {
+      "type": "string"
+    }
+  }
+}
