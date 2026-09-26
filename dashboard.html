@@ -88,6 +88,47 @@
     .status-section { margin: 22px 0 28px; }
     .section-label { margin-bottom: 10px; }
 
+    .runbook-section { margin: 22px 0 28px; }
+    .runbook-form { display: grid; gap: 10px; }
+    #runbook-input {
+      width: 100%;
+      min-height: 200px;
+      padding: 13px 14px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: rgba(23, 30, 27, .94);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.5;
+      resize: vertical;
+    }
+    #runbook-input::placeholder { color: var(--faint); }
+    .runbook-actions { display: flex; justify-content: flex-end; }
+    .control-button {
+      min-height: 34px;
+      padding: 7px 12px;
+      border: 1px solid currentColor;
+      border-radius: 4px;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .control-button:disabled { opacity: .55; cursor: not-allowed; }
+    .submit-button, .approve-button {
+      border-color: var(--green);
+      background: rgba(104, 211, 145, .12);
+      color: var(--green);
+    }
+    .reject-button {
+      border-color: var(--red);
+      background: rgba(255, 112, 105, .1);
+      color: var(--red);
+    }
+    .status-copy { display: flex; flex: 1; flex-wrap: wrap; gap: 0 6px; min-width: 0; }
+    .status-actions { display: inline-flex; flex: 0 0 auto; gap: 8px; }
+
     .status-banner {
       display: flex;
       align-items: center;
@@ -126,7 +167,7 @@
       50% { background-color: rgba(100, 32, 30, .55); }
     }
 
-    .status-description { color: var(--text); font-weight: 500; }
+    .status-description { color: var(--text); font-weight: 500; overflow-wrap: anywhere; }
 
     .section-head {
       display: flex;
@@ -277,6 +318,8 @@
       .masthead-note { max-width: 115px; line-height: 1.5; }
       .status-banner { align-items: flex-start; padding: 14px; font-size: 14px; line-height: 1.45; }
       .status-banner::before { margin-top: 5px; }
+      .status-copy { flex-basis: calc(100% - 24px); }
+      .status-actions { margin-left: 24px; }
       .section-head { align-items: flex-start; }
       .summary { gap: 5px; }
       .summary span { padding: 5px; }
@@ -301,10 +344,27 @@
       <div class="masthead-note">LOCAL LOG STREAM<br>Refresh interval: 1s</div>
     </header>
 
+    <section class="runbook-section" aria-labelledby="runbook-heading">
+      <div class="section-label" id="runbook-heading">Submit runbook</div>
+      <form class="runbook-form" id="runbook-form">
+        <textarea id="runbook-input" rows="10" placeholder="Paste your runbook markdown here..."></textarea>
+        <div class="runbook-actions">
+          <button class="control-button submit-button" id="submit-btn" type="submit">Submit Runbook</button>
+        </div>
+      </form>
+    </section>
+
     <section class="status-section" aria-labelledby="status-heading">
       <div class="section-label" id="status-heading">Current status</div>
       <div class="status-banner" id="status-banner" role="status" aria-live="polite">
-        No runbook running yet
+        <div class="status-copy">
+          <span id="status-prefix">No runbook running yet</span>
+          <span class="status-description" id="status-description" hidden></span>
+        </div>
+        <div class="status-actions">
+          <button class="control-button approve-button" id="approve-btn" type="button" hidden>Approve</button>
+          <button class="control-button reject-button" id="reject-btn" type="button" hidden>Reject</button>
+        </div>
       </div>
     </section>
 
@@ -327,13 +387,20 @@
     </section>
 
     <footer class="footer">
-      <span>Source: logs/status.json + logs/audit_log.jsonl</span>
+      <span>Source: /status + logs/audit_log.jsonl</span>
       <span id="last-refresh">Waiting for logs</span>
     </footer>
   </main>
 
   <script>
     const statusBanner = document.getElementById("status-banner");
+    const statusPrefix = document.getElementById("status-prefix");
+    const statusDescription = document.getElementById("status-description");
+    const runbookForm = document.getElementById("runbook-form");
+    const runbookInput = document.getElementById("runbook-input");
+    const submitButton = document.getElementById("submit-btn");
+    const approveButton = document.getElementById("approve-btn");
+    const rejectButton = document.getElementById("reject-btn");
     const timeline = document.getElementById("timeline");
     const eventCount = document.getElementById("event-count");
     const riskCount = document.getElementById("risk-count");
@@ -343,7 +410,11 @@
     function setStatus(status) {
       statusBanner.className = "status-banner";
       if (!status || !status.state) {
-        statusBanner.textContent = "No runbook running yet";
+        statusPrefix.textContent = "No runbook running yet";
+        statusDescription.textContent = "";
+        statusDescription.hidden = true;
+        approveButton.hidden = true;
+        rejectButton.hidden = true;
         return;
       }
 
@@ -351,23 +422,20 @@
       statusBanner.classList.add(state);
       const description = status.description ? String(status.description) : "";
       let prefix;
-      if (state === "waiting_approval") prefix = "⏳ Waiting for human approval: ";
-      else if (state === "running") prefix = "▶ Running: ";
-      else if (state === "done") prefix = "✓ Completed";
+      if (state === "waiting_approval") prefix = "WAITING: ";
+      else if (state === "running") prefix = "RUNNING: ";
+      else if (state === "done") prefix = "DONE";
       else if (state === "blocked") prefix = "Blocked: ";
       else if (state === "rolled_back") prefix = "Rolled back: ";
       else prefix = state.replaceAll("_", " ");
 
-      statusBanner.replaceChildren();
-      const text = document.createElement("span");
-      text.textContent = prefix;
-      statusBanner.append(text);
-      if (description && state !== "done") {
-        const detail = document.createElement("span");
-        detail.className = "status-description";
-        detail.textContent = description;
-        statusBanner.append(detail);
-      }
+      statusPrefix.textContent = prefix;
+      statusDescription.textContent = description;
+      statusDescription.hidden = !description || state === "done";
+      const waitingForApproval = state === "waiting_approval";
+      approveButton.hidden = !waitingForApproval;
+      rejectButton.hidden = !waitingForApproval;
+      submitButton.disabled = !["idle", "done", "error"].includes(state);
     }
 
     function formatTime(value) {
@@ -461,14 +529,47 @@
 
     async function pollStatus() {
       try {
-        const response = await fetch(`logs/status.json?_=${Date.now()}`, { cache: "no-store" });
+        const response = await fetch("/status");
         if (!response.ok) throw new Error("Status file unavailable");
-        const text = await response.text();
-        setStatus(text.trim() ? JSON.parse(text) : null);
+        setStatus(await response.json());
       } catch {
         setStatus(null);
       }
     }
+
+    runbookForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      submitButton.disabled = true;
+      try {
+        const response = await fetch("/run", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ runbook_text: runbookInput.value }),
+        });
+        if (response.status === 409) {
+          window.alert("A runbook is already running.");
+          submitButton.disabled = false;
+          return;
+        }
+        if (!response.ok) throw new Error("Runbook submission failed");
+        const result = await response.json();
+        if (!result.started) submitButton.disabled = false;
+        await pollStatus();
+      } catch {
+        submitButton.disabled = false;
+      }
+    });
+
+    async function sendDecision(endpoint) {
+      try {
+        await fetch(endpoint, { method: "POST" });
+      } finally {
+        await pollStatus();
+      }
+    }
+
+    approveButton.addEventListener("click", () => sendDecision("/approve"));
+    rejectButton.addEventListener("click", () => sendDecision("/reject"));
 
     async function pollAudit() {
       try {
