@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Runbook Monitor</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --page: #101614;
+      --surface: #171e1b;
+      --surface-raised: #1d2622;
+      --line: #303c36;
+      --text: #e8eee9;
+      --muted: #98a79d;
+      --faint: #68786e;
+      --green: #68d391;
+      --yellow: #e6bf56;
+      --red: #ff7069;
+      --blue: #66b7e8;
+      --mono: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      --sans: "Segoe UI", "Trebuchet MS", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--text);
+      background-color: var(--page);
+      background-image:
+        linear-gradient(rgba(153, 185, 164, .025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(153, 185, 164, .025) 1px, transparent 1px);
+      background-size: 34px 34px;
+      font-family: var(--sans);
+    }
+
+    .shell {
+      width: min(100% - 40px, 1040px);
+      margin: 0 auto;
+      padding: 34px 0 48px;
+    }
+
+    .masthead {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 24px;
+      padding-bottom: 22px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .eyebrow, .section-label, .metric-label, .field-label {
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    .eyebrow { display: flex; align-items: center; gap: 9px; }
+    .eyebrow::before {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 12px rgba(104, 211, 145, .55);
+      content: "";
+    }
+
+    h1 {
+      margin: 8px 0 0;
+      font-size: 34px;
+      font-weight: 650;
+      line-height: 1.05;
+    }
+
+    .masthead-note {
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+      text-align: right;
+    }
+
+    .status-section { margin: 22px 0 28px; }
+    .section-label { margin-bottom: 10px; }
+
+    .status-banner {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-height: 68px;
+      padding: 16px 19px;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--faint);
+      border-radius: 5px;
+      background: rgba(23, 30, 27, .94);
+      color: var(--muted);
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .status-banner::before {
+      width: 9px;
+      height: 9px;
+      flex: 0 0 9px;
+      border-radius: 50%;
+      background: currentColor;
+      content: "";
+    }
+
+    .status-banner.running { border-left-color: var(--blue); color: var(--blue); }
+    .status-banner.waiting_approval {
+      border-left-color: var(--red);
+      color: #ffaaa4;
+      animation: approval-pulse 1.5s ease-in-out infinite;
+    }
+    .status-banner.done { border-left-color: var(--green); color: var(--green); }
+    .status-banner.blocked { border-left-color: var(--yellow); color: var(--yellow); }
+    .status-banner.rolled_back { border-left-color: #75c9c0; color: #75c9c0; }
+
+    @keyframes approval-pulse {
+      50% { background-color: rgba(100, 32, 30, .55); }
+    }
+
+    .status-description { color: var(--text); font-weight: 500; }
+
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin: 0 0 12px;
+    }
+
+    .section-head h2 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 620;
+    }
+
+    .summary {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .summary span { padding: 5px 8px; border: 1px solid var(--line); border-radius: 3px; }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      padding: 11px 0 13px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .legend-item { display: inline-flex; align-items: center; gap: 7px; }
+    .legend-dot { width: 7px; height: 7px; border-radius: 50%; }
+    .legend-dot.read_only { background: var(--green); }
+    .legend-dot.reversible { background: var(--yellow); }
+    .legend-dot.destructive { background: var(--red); }
+
+    .timeline {
+      position: relative;
+      max-height: min(62vh, 720px);
+      min-height: 190px;
+      overflow: auto;
+      padding: 3px 10px 10px 30px;
+      scrollbar-color: #536259 transparent;
+      scrollbar-width: thin;
+    }
+
+    .timeline::before {
+      position: absolute;
+      top: 10px;
+      bottom: 16px;
+      left: 10px;
+      width: 1px;
+      background: #39473f;
+      content: "";
+    }
+
+    .event-card {
+      position: relative;
+      margin: 0 0 10px;
+      padding: 14px 16px 13px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: rgba(23, 30, 27, .96);
+      animation: arrive .24s ease-out both;
+    }
+
+    .event-card::before {
+      position: absolute;
+      top: 19px;
+      left: -25px;
+      width: 9px;
+      height: 9px;
+      border: 2px solid var(--page);
+      border-radius: 50%;
+      background: var(--event-color, var(--muted));
+      box-shadow: 0 0 0 1px var(--event-color, var(--muted));
+      content: "";
+    }
+
+    @keyframes arrive {
+      from { opacity: 0; transform: translateY(5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .event-top, .event-bottom, .field-row { display: flex; align-items: center; }
+    .event-top { justify-content: space-between; gap: 12px; }
+    .step-id { color: var(--text); font-family: var(--mono); font-size: 12px; font-weight: 700; }
+    .event-time { color: var(--muted); font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+    .event-description { margin: 9px 0 12px; font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
+    .event-bottom { flex-wrap: wrap; justify-content: space-between; gap: 9px 16px; }
+    .field-row { flex-wrap: wrap; gap: 8px 17px; }
+    .field { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+    .field-label { color: var(--faint); font-size: 10px; }
+    .field-value { color: #cbd6ce; font-family: var(--mono); font-size: 11px; overflow-wrap: anywhere; }
+
+    .risk, .action {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 3px 7px;
+      border: 1px solid currentColor;
+      border-radius: 3px;
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    .risk.read_only { color: var(--green); background: rgba(104, 211, 145, .08); }
+    .risk.reversible { color: var(--yellow); background: rgba(230, 191, 86, .08); }
+    .risk.destructive { color: var(--red); background: rgba(255, 112, 105, .08); }
+    .action { color: #c4d0c8; border-color: #48564e; background: #202a25; }
+    .action.error, .action.rejected { color: #ff918a; border-color: rgba(255, 112, 105, .55); background: rgba(255, 112, 105, .08); }
+    .action.rollback_executed { color: #75c9c0; border-color: rgba(117, 201, 192, .5); background: rgba(117, 201, 192, .08); }
+
+    .empty-state {
+      display: grid;
+      min-height: 175px;
+      place-items: center;
+      border: 1px dashed #3a4840;
+      border-radius: 5px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 12px;
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: 10px;
+    }
+
+    @media (max-width: 600px) {
+      .shell { width: min(100% - 24px, 1040px); padding-top: 24px; }
+      .masthead { align-items: flex-start; }
+      .masthead-note { max-width: 115px; line-height: 1.5; }
+      .status-banner { align-items: flex-start; padding: 14px; font-size: 14px; line-height: 1.45; }
+      .status-banner::before { margin-top: 5px; }
+      .section-head { align-items: flex-start; }
+      .summary { gap: 5px; }
+      .summary span { padding: 5px; }
+      .timeline { max-height: 65vh; padding-right: 2px; }
+      .event-card { padding: 13px 12px; }
+      .event-description { font-size: 13px; }
+      .field-row { gap: 8px 12px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; scroll-behavior: auto !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="masthead">
+      <div>
+        <div class="eyebrow">Operations / Live execution</div>
+        <h1>Runbook monitor</h1>
+      </div>
+      <div class="masthead-note">LOCAL LOG STREAM<br>Refresh interval: 1s</div>
+    </header>
+
+    <section class="status-section" aria-labelledby="status-heading">
+      <div class="section-label" id="status-heading">Current status</div>
+      <div class="status-banner" id="status-banner" role="status" aria-live="polite">
+        No runbook running yet
+      </div>
+    </section>
+
+    <section aria-labelledby="timeline-heading">
+      <div class="section-head">
+        <h2 id="timeline-heading">Execution timeline</h2>
+        <div class="summary" aria-label="Audit summary">
+          <span id="event-count">0 EVENTS</span>
+          <span id="risk-count">0 DESTRUCTIVE</span>
+        </div>
+      </div>
+      <div class="legend" aria-label="Risk level legend">
+        <span class="legend-item"><i class="legend-dot read_only"></i>Read only</span>
+        <span class="legend-item"><i class="legend-dot reversible"></i>Reversible</span>
+        <span class="legend-item"><i class="legend-dot destructive"></i>Destructive</span>
+      </div>
+      <div class="timeline" id="timeline" aria-live="polite">
+        <div class="empty-state">No runbook running yet</div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <span>Source: logs/status.json + logs/audit_log.jsonl</span>
+      <span id="last-refresh">Waiting for logs</span>
+    </footer>
+  </main>
+
+  <script>
+    const statusBanner = document.getElementById("status-banner");
+    const timeline = document.getElementById("timeline");
+    const eventCount = document.getElementById("event-count");
+    const riskCount = document.getElementById("risk-count");
+    const lastRefresh = document.getElementById("last-refresh");
+    let lastAuditText = null;
+
+    function setStatus(status) {
+      statusBanner.className = "status-banner";
+      if (!status || !status.state) {
+        statusBanner.textContent = "No runbook running yet";
+        return;
+      }
+
+      const state = String(status.state).toLowerCase();
+      statusBanner.classList.add(state);
+      const description = status.description ? String(status.description) : "";
+      let prefix;
+      if (state === "waiting_approval") prefix = "⏳ Waiting for human approval: ";
+      else if (state === "running") prefix = "▶ Running: ";
+      else if (state === "done") prefix = "✓ Completed";
+      else if (state === "blocked") prefix = "Blocked: ";
+      else if (state === "rolled_back") prefix = "Rolled back: ";
+      else prefix = state.replaceAll("_", " ");
+
+      statusBanner.replaceChildren();
+      const text = document.createElement("span");
+      text.textContent = prefix;
+      statusBanner.append(text);
+      if (description && state !== "done") {
+        const detail = document.createElement("span");
+        detail.className = "status-description";
+        detail.textContent = description;
+        statusBanner.append(detail);
+      }
+    }
+
+    function formatTime(value) {
+      if (!value) return "Timestamp unavailable";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+      return new Intl.DateTimeFormat(undefined, {
+        month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
+      }).format(date);
+    }
+
+    function createField(label, value) {
+      const wrapper = document.createElement("span");
+      wrapper.className = "field";
+      const name = document.createElement("span");
+      name.className = "field-label";
+      name.textContent = label;
+      const text = document.createElement("span");
+      text.className = "field-value";
+      text.textContent = value == null || value === "" ? "—" : String(value);
+      wrapper.append(name, text);
+      return wrapper;
+    }
+
+    function createEventCard(event, index) {
+      const card = document.createElement("article");
+      card.className = "event-card";
+      const risk = String(event.risk || "unknown").toLowerCase();
+      const action = String(event.action || "unknown").toLowerCase();
+      const color = risk === "read_only" ? "var(--green)"
+        : risk === "reversible" ? "var(--yellow)"
+          : risk === "destructive" ? "var(--red)" : "var(--muted)";
+      card.style.setProperty("--event-color", color);
+
+      const top = document.createElement("div");
+      top.className = "event-top";
+      const id = document.createElement("span");
+      id.className = "step-id";
+      id.textContent = event.step_id ? String(event.step_id) : `Step ${index + 1}`;
+      const timestamp = document.createElement("time");
+      timestamp.className = "event-time";
+      timestamp.textContent = formatTime(event.timestamp);
+      if (event.timestamp) timestamp.dateTime = String(event.timestamp);
+      top.append(id, timestamp);
+
+      const description = document.createElement("p");
+      description.className = "event-description";
+      description.textContent = event.description || "No description provided";
+
+      const bottom = document.createElement("div");
+      bottom.className = "event-bottom";
+      const fields = document.createElement("div");
+      fields.className = "field-row";
+      fields.append(createField("Tool", event.tool));
+      const riskBadge = document.createElement("span");
+      riskBadge.className = `risk ${risk}`;
+      riskBadge.textContent = risk.replaceAll("_", " ");
+      fields.append(riskBadge);
+      const actionBadge = document.createElement("span");
+      actionBadge.className = `action ${action}`;
+      actionBadge.textContent = action.replaceAll("_", " ");
+      bottom.append(fields, actionBadge);
+
+      card.append(top, description, bottom);
+      return card;
+    }
+
+    function renderEvents(events, auditText) {
+      if (auditText === lastAuditText) return;
+      lastAuditText = auditText;
+      const previousCount = timeline.querySelectorAll(".event-card").length;
+      const fragment = document.createDocumentFragment();
+      const destructiveCount = events.filter((event) => event.risk === "destructive").length;
+      eventCount.textContent = `${events.length} EVENT${events.length === 1 ? "" : "S"}`;
+      riskCount.textContent = `${destructiveCount} DESTRUCTIVE`;
+
+      if (events.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "empty-state";
+        empty.textContent = "No runbook running yet";
+        timeline.replaceChildren(empty);
+        return;
+      }
+
+      events.forEach((event, index) => fragment.append(createEventCard(event, index)));
+      timeline.replaceChildren(fragment);
+      if (events.length > previousCount || previousCount === 0) {
+        timeline.scrollTop = timeline.scrollHeight;
+      }
+    }
+
+    async function pollStatus() {
+      try {
+        const response = await fetch(`logs/status.json?_=${Date.now()}`, { cache: "no-store" });
+        if (!response.ok) throw new Error("Status file unavailable");
+        const text = await response.text();
+        setStatus(text.trim() ? JSON.parse(text) : null);
+      } catch {
+        setStatus(null);
+      }
+    }
+
+    async function pollAudit() {
+      try {
+        const response = await fetch(`logs/audit_log.jsonl?_=${Date.now()}`, { cache: "no-store" });
+        if (!response.ok) throw new Error("Audit file unavailable");
+        const text = await response.text();
+        const events = text.split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .flatMap((line) => {
+            try {
+              const entry = JSON.parse(line);
+              return entry && typeof entry === "object" ? [entry] : [];
+            } catch {
+              return [];
+            }
+          });
+        renderEvents(events, text);
+      } catch {
+        renderEvents([], "");
+      }
+    }
+
+    async function refresh() {
+      await Promise.all([pollStatus(), pollAudit()]);
+      lastRefresh.textContent = `Updated ${new Intl.DateTimeFormat(undefined, {
+        hour: "2-digit", minute: "2-digit", second: "2-digit",
+      }).format(new Date())}`;
+    }
+
+    refresh();
+    window.setInterval(refresh, 1000);
+  </script>
+</body>
+</html>

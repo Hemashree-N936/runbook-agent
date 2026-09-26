@@ -3,6 +3,8 @@ def classify_risk(step: dict) -> str:
 
 	if tool == "run_sql":
 		return "destructive"
+	if tool == "write_greeting_line":
+		return "reversible"
 	if any(keyword in tool for keyword in ("delete", "drop", "terminate", "remove")):
 		return "destructive"
 	if any(keyword in tool for keyword in ("scale", "restart", "rollback", "pause", "resume")):

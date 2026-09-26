@@ -1,5 +1,6 @@
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -11,6 +12,7 @@ from agent.parser import parse_runbook
 from agent.audit_log import log_event
 from agent.risk_classifier import classify_risk
 from tools.db_tools import run_sql
+from tools.demo_tools import write_greeting_line
 from tools.k8s_tools import (
 	delete_deployment,
 	get_pod_status,
@@ -27,7 +29,23 @@ TOOL_FUNCTIONS = {
 	"scale_deployment": scale_deployment,
 	"delete_deployment": delete_deployment,
 	"run_sql": run_sql,
+	"write_greeting_line": write_greeting_line,
 }
+
+
+def write_status(step_id: str, description: str, state: str) -> None:
+	status_path = PROJECT_ROOT / "logs" / "status.json"
+	status = {
+		"current_step": step_id,
+		"description": description,
+		"state": state,
+		"updated_at": datetime.now(timezone.utc).isoformat(),
+	}
+	try:
+		status_path.parent.mkdir(parents=True, exist_ok=True)
+		status_path.write_text(json.dumps(status, indent=2), encoding="utf-8")
+	except Exception:
+		pass
 
 
 def _run_tool(tool: str, function, args: dict) -> tuple[bool, dict]:
@@ -63,7 +81,10 @@ def execute_steps(steps: list[dict]) -> tuple[int, int, int, int, int, int]:
 	for step in steps:
 		tool = step.get("tool", "")
 		args = step.get("args", {})
-		print(f"Step {step.get('id', '?')}: {step.get('description', '')}")
+		step_id = step.get("id", "?")
+		description = step.get("description", "")
+		write_status(step_id, description, "running")
+		print(f"Step {step_id}: {description}")
 
 		try:
 			risk = classify_risk(step)
@@ -92,6 +113,7 @@ def execute_steps(steps: list[dict]) -> tuple[int, int, int, int, int, int]:
 			print(f"Args: {args}")
 			print(f"Rollback: {rollback}")
 
+			write_status(step_id, description, "waiting_approval")
 			answer = _read_approval("Approve this destructive step? [y/n/e=edit]: ")
 			if answer == "e":
 				try:
@@ -104,11 +126,13 @@ def execute_steps(steps: list[dict]) -> tuple[int, int, int, int, int, int]:
 					errored += 1
 					continue
 
+				write_status(step_id, description, "waiting_approval")
 				answer = _read_approval("Approve with new args? [y/n]: ")
 				if answer == "y":
 					approved += 1
 					succeeded, result = _run_tool(tool, function, edited_args)
 					if succeeded:
+						write_status(step_id, description, "done")
 						log_event(step, risk, "approved_edited", result, approver="user")
 					else:
 						log_event(step, risk, "error", result)
@@ -121,10 +145,12 @@ def execute_steps(steps: list[dict]) -> tuple[int, int, int, int, int, int]:
 					print("Skipped by user.")
 					log_event(step, risk, "rejected", None, approver="user")
 					rejected += 1
+					write_status(step_id, description, "blocked")
 			elif answer == "y":
 				approved += 1
 				succeeded, result = _run_tool(tool, function, args)
 				if succeeded:
+					write_status(step_id, description, "done")
 					log_event(step, risk, "approved", result, approver="user")
 				else:
 					log_event(step, risk, "error", result)
@@ -137,10 +163,12 @@ def execute_steps(steps: list[dict]) -> tuple[int, int, int, int, int, int]:
 				print("Skipped by user.")
 				log_event(step, risk, "rejected", None, approver="user")
 				rejected += 1
+				write_status(step_id, description, "blocked")
 			continue
 
 		succeeded, result = _run_tool(tool, function, args)
 		if succeeded:
+			write_status(step_id, description, "done")
 			log_event(step, risk, "executed", result)
 			ran += 1
 			if risk in ("read_only", "reversible"):
@@ -170,6 +198,7 @@ def execute_steps(steps: list[dict]) -> tuple[int, int, int, int, int, int]:
 					print(f"ERROR: {result['error']}", file=sys.stderr)
 				else:
 					_, result = _run_tool(rollback_tool, rollback_function, rollback_args)
+				write_status(step.get("id", "?"), step.get("description", ""), "rolled_back")
 				rollback_executed += 1
 				log_event(step, "reversible", "rollback_executed", result)
 			else:
