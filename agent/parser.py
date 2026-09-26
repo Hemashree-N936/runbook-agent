@@ -57,6 +57,13 @@ def parse_runbook(runbook_path: str | Path) -> list[dict]:
 		'- delete_deployment: {"namespace", "deployment"}\n'
 		"For 'risk', 'preconditions', 'rollback', "
 		"and 'expected_outcome', infer reasonable values from context. "
+		"For reversible actions, also include 'rollback_tool' and "
+		"'rollback_args' as the structured inverse action. For a "
+		"scale_deployment step that scales to 0 replicas, use "
+		"rollback_tool='scale_deployment' and rollback_args with the same "
+		"namespace and deployment and replicas=2 unless a different prior "
+		"count is stated. For destructive actions that cannot be undone by "
+		"re-running a tool, set rollback_tool to null and rollback_args to {}. "
 		"Output ONLY a raw JSON object of the form {\"steps\": [...]} where the array contains one object per runbook step, no markdown fences, no explanation."
 	)
 

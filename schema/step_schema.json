@@ -48,6 +48,16 @@
         "null"
       ]
     },
+    "rollback_tool": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "rollback_args": {
+      "type": "object",
+      "additionalProperties": true
+    },
     "expected_outcome": {
       "type": "string"
     }

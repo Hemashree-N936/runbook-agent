@@ -48,11 +48,15 @@ def _read_approval(prompt: str) -> str:
 		return ""
 
 
-def execute_steps(steps: list[dict]) -> tuple[int, int, int, int]:
+def execute_steps(steps: list[dict]) -> tuple[int, int, int, int, int, int]:
 	ran = 0
 	approved = 0
 	rejected = 0
 	errored = 0
+	rollback_executed = 0
+	rollback_skipped = 0
+	completed_reversible: list[dict] = []
+	stopped_due_to_failure = False
 
 	for step in steps:
 		tool = step.get("tool", "")
@@ -65,14 +69,16 @@ def execute_steps(steps: list[dict]) -> tuple[int, int, int, int]:
 			print(f"ERROR: Could not classify step risk: {exc}", file=sys.stderr)
 			log_event(step, "unknown", "error", {"error": str(exc)})
 			errored += 1
-			continue
+			stopped_due_to_failure = True
+			break
 
 		function = TOOL_FUNCTIONS.get(tool)
 		if function is None:
 			print(f"ERROR: Unknown tool '{tool}'; treating it as destructive.", file=sys.stderr)
 			log_event(step, risk, "error", {"error": f"Unknown tool '{tool}'"})
 			errored += 1
-			continue
+			stopped_due_to_failure = True
+			break
 
 		if risk == "destructive":
 			rollback = step.get("rollback")
@@ -105,6 +111,8 @@ def execute_steps(steps: list[dict]) -> tuple[int, int, int, int]:
 					else:
 						log_event(step, risk, "error", result)
 						errored += 1
+						stopped_due_to_failure = True
+						break
 				else:
 					if answer != "n":
 						print("Unrecognized response; it was treated as a rejection.")
@@ -119,6 +127,8 @@ def execute_steps(steps: list[dict]) -> tuple[int, int, int, int]:
 				else:
 					log_event(step, risk, "error", result)
 					errored += 1
+					stopped_due_to_failure = True
+					break
 			else:
 				if answer != "n":
 					print("Unrecognized response; it was treated as a rejection.")
@@ -131,11 +141,41 @@ def execute_steps(steps: list[dict]) -> tuple[int, int, int, int]:
 		if succeeded:
 			log_event(step, risk, "executed", result)
 			ran += 1
+			if risk in ("read_only", "reversible"):
+				completed_reversible.append(step)
 		else:
 			log_event(step, risk, "error", result)
 			errored += 1
+			stopped_due_to_failure = True
+			break
 
-	return ran, approved, rejected, errored
+	if stopped_due_to_failure and completed_reversible:
+		for step in reversed(completed_reversible):
+			rollback_tool = step.get("rollback_tool")
+			if rollback_tool is None:
+				continue
+
+			rollback_args = step.get("rollback_args", {})
+			print(
+				f"ROLLBACK AVAILABLE for step {step.get('id', '?')}: "
+				f"would run {rollback_tool} with {rollback_args}"
+			)
+			answer = _read_approval("Run this rollback? [y/n]: ")
+			if answer == "y":
+				rollback_function = TOOL_FUNCTIONS.get(rollback_tool)
+				if rollback_function is None:
+					result = {"success": False, "error": f"Unknown tool '{rollback_tool}'"}
+					print(f"ERROR: {result['error']}", file=sys.stderr)
+				else:
+					_, result = _run_tool(rollback_tool, rollback_function, rollback_args)
+				rollback_executed += 1
+				log_event(step, "reversible", "rollback_executed", result)
+			else:
+				print("Rollback skipped by user.")
+				rollback_skipped += 1
+				log_event(step, "reversible", "rollback_skipped", None, approver="user")
+
+	return ran, approved, rejected, errored, rollback_executed, rollback_skipped
 
 
 def main() -> int:
@@ -149,10 +189,11 @@ def main() -> int:
 		print(f"ERROR: Could not parse runbook: {exc}", file=sys.stderr)
 		return 1
 
-	ran, approved, rejected, errored = execute_steps(steps)
+	ran, approved, rejected, errored, rollback_executed, rollback_skipped = execute_steps(steps)
 	print(
 		f"Summary: {ran} steps ran, {approved} approved, {rejected} rejected, "
-		f"{errored} errored."
+		f"{errored} errored, {rollback_executed} rollback_executed, "
+		f"{rollback_skipped} rollback_skipped."
 	)
 	return 0
 
