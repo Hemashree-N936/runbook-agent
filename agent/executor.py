@@ -10,6 +10,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from agent.parser import parse_runbook
 from agent.audit_log import log_event
 from agent.risk_classifier import classify_risk
+from tools.db_tools import run_sql
 from tools.k8s_tools import (
 	delete_deployment,
 	get_pod_status,
@@ -25,6 +26,7 @@ TOOL_FUNCTIONS = {
 	"tail_logs": tail_logs,
 	"scale_deployment": scale_deployment,
 	"delete_deployment": delete_deployment,
+	"run_sql": run_sql,
 }
 
 

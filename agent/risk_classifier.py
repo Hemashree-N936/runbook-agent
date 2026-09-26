@@ -1,6 +1,8 @@
 def classify_risk(step: dict) -> str:
 	tool = step["tool"].lower()
 
+	if tool == "run_sql":
+		return "destructive"
 	if any(keyword in tool for keyword in ("delete", "drop", "terminate", "remove")):
 		return "destructive"
 	if any(keyword in tool for keyword in ("scale", "restart", "rollback", "pause", "resume")):

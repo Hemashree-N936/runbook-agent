@@ -48,13 +48,14 @@ def parse_runbook(runbook_path: str | Path) -> list[dict]:
 		"\"staging\" unless stated otherwise). "
 		'The "tool" field MUST be exactly one of these values, no others: '
 		'"get_pod_status", "get_replica_count", "tail_logs", "scale_deployment", '
-		'"delete_deployment". Choose the closest match based on what the step describes. '
+		'"delete_deployment","run_sql". Choose the closest match based on what the step describes. '
 		'Use these EXACT argument names in "args" for each tool (do not invent alternate names):\n'
 		'- get_pod_status: {"namespace"}\n'
 		'- get_replica_count: {"namespace", "deployment"}\n'
 		'- tail_logs: {"namespace", "deployment", "lines"}\n'
 		'- scale_deployment: {"namespace", "deployment", "replicas"}\n'
 		'- delete_deployment: {"namespace", "deployment"}\n'
+		'- run_sql: {"query", "database"}\n '
 		"For 'risk', 'preconditions', 'rollback', "
 		"and 'expected_outcome', infer reasonable values from context. "
 		"For reversible actions, also include 'rollback_tool' and "
